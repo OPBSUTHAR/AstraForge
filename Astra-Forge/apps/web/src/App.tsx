@@ -77,15 +77,23 @@ export function App() {
   }
 
   async function handleUpload(file: File | null) {
-    if (!file || !projectId) return;
+    if (!file || uploading) return;
     setUploading(true);
     try {
-      const asset = await api.uploadImage(projectId, file);
+      let targetProjectId = projectId;
+      if (!targetProjectId) {
+        const project = await api.createProject("Untitled project");
+        setProjects((prev) => [...prev, project]);
+        setProjectId(project.id);
+        targetProjectId = project.id;
+        pushTerm("info", `no project selected — created "${project.name}"`);
+      }
+      const asset = await api.uploadImage(targetProjectId, file);
       setAssets((prev) => [...prev, asset]);
       setActiveAssetId(asset.id);
       pushTerm("info", `imported "${file.name}" as asset ${asset.id.slice(0, 8)}`);
     } catch (error) {
-      pushTerm("error", (error as Error).message);
+      pushTerm("error", `import failed: ${(error as Error).message}`);
     } finally {
       setUploading(false);
     }
@@ -166,7 +174,7 @@ export function App() {
             <input
               type="file"
               accept="image/*"
-              disabled={!projectId}
+              disabled={uploading}
               onChange={(e) => handleUpload(e.target.files?.[0] ?? null)}
             />
           </label>
