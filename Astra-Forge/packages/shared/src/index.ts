@@ -9,16 +9,26 @@ export interface ModelAsset {
   name: string;
   source: "upload" | "vision" | "geometry" | "karmashala";
   format: MeshFormat;
-  /** Relative path on the server (storage/meshes/...). */
+  /** Relative path on the server (storage/meshes/... or storage/uploads/...). */
   path: string;
   /** Original 2D image path when generated from a photo. */
   sourceImagePath?: string;
+  /** Absolute URL the browser can use to fetch the mesh file. */
+  meshUrl?: string;
+  /** Small inline thumbnail (data URL) of the source image. */
+  previewDataUrl?: string;
   status: AssetStatus;
   /** Vertex / triangle counts after processing, if known. */
   stats?: {
     vertices: number;
     triangles: number;
     watertight?: boolean;
+  };
+  /** Free holographic placement (set + driven from the UI). */
+  transform?: {
+    position: [number, number, number];
+    rotation: [number, number, number];
+    scale: [number, number, number];
   };
   createdAt: string;
   updatedAt: string;
@@ -69,11 +79,18 @@ export interface ServerToClientEvents {
   "job:update": (job: PipelineJob) => void;
   "asset:update": (asset: ModelAsset) => void;
   "karmashala:log": (entry: { timestamp: string; level: string; message: string }) => void;
+  "scene:command": (cmd: {
+    action: "spawn" | "mutate" | "redesign" | "select" | "delete";
+    target?: string;
+    payload?: Record<string, unknown>;
+    text?: string;
+  }) => void;
 }
 
 export interface ClientToServerEvents {
   "job:subscribe": (jobId: string) => void;
   "karmashala:command": (text: string) => void;
+  "scene:command": (cmd: ServerToClientEvents["scene:command"]) => void;
 }
 
 /** Vision pipeline (Phase 2) request/response contracts. */

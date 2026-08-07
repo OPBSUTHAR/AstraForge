@@ -2,8 +2,9 @@ fastapi==0.115.6
 uvicorn[standard]>=0.34.0
 pillow>=11.0.0
 numpy>=2.1.0
-rembg>=2.0.60
-onnxruntime>=1.20.1
-# Mesh generation backends (installed separately; heavy)
-# trellis: pip install trellis
-# sf3d:   pip install sf3d
+# AstraForge vision is intentionally fully offline:
+# only Pillow + numpy are required to convert a 2D image into a mesh.
+# Optional backends (installed separately, very heavy):
+#   pip install rembg onnxruntime
+#   pip install trellis
+#   pip install sf3d

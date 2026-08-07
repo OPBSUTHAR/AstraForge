@@ -2,6 +2,7 @@ import { Router } from "express";
 import { assets } from "../data.js";
 import { uploadImage } from "../services/storage.js";
 import { runVisionJob } from "../services/vision.js";
+import { emitAssetUpdate } from "../sockets.js";
 
 export const assetsRouter = Router();
 
@@ -20,6 +21,27 @@ assetsRouter.delete("/:id", async (req, res, next) => {
     const removed = await assets.remove(req.params.id);
     if (!removed) return res.status(404).json({ error: "asset not found" });
     res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Update an asset's free holographic transform (or other mutable fields). */
+assetsRouter.patch("/:id", async (req, res, next) => {
+  try {
+    const existing = await assets.get(req.params.id);
+    if (!existing) return res.status(404).json({ error: "asset not found" });
+    const patch: Record<string, unknown> = {};
+    const { transform, name } = req.body ?? {};
+    if (transform && typeof transform === "object") {
+      patch.transform = transform;
+    }
+    if (typeof name === "string" && name.trim()) {
+      patch.name = name.trim();
+    }
+    const updated = await assets.update(req.params.id, patch);
+    if (updated) emitAssetUpdate(updated as unknown as Record<string, unknown>);
+    res.json(updated);
   } catch (error) {
     next(error);
   }

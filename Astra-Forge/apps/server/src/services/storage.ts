@@ -3,12 +3,21 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
 
-const ALLOWED_IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp"]);
+const ALLOWED_IMAGE_EXT = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".bmp",
+  ".gif",
+  ".tiff",
+  ".tif",
+]);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, config.uploadDir),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = path.extname(file.originalname).toLowerCase() || ".png";
     cb(null, `${randomUUID()}${ext}`);
   },
 });
