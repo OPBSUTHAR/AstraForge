@@ -1,0 +1,25 @@
+{
+  "name": "astra-forge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Project AstraForge - Tony Stark style holographic design space bridging 2D images, AI generation, and physical fabrication",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @astraforge/server\" \"npm run dev -w @astraforge/web\"",
+    "dev:server": "npm run dev -w @astraforge/server",
+    "dev:web": "npm run dev -w @astraforge/web",
+    "build": "npm run build -w @astraforge/shared && npm run build -w @astraforge/server && npm run build -w @astraforge/web",
+    "typecheck": "npm run typecheck -w @astraforge/shared && npm run typecheck -w @astraforge/server && npm run typecheck -w @astraforge/web",
+    "vision:setup": "cd services/vision && python -m venv .venv && .venv/Scripts/pip install -r requirements.txt",
+    "karmashala": "cd services/karmashala && python cli.py"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
