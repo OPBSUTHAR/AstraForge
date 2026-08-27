@@ -616,26 +616,55 @@ def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, i
             d = base_offset + idx_top(i, j + 1)
             faces.append((a, c, b))
             faces.append((a, d, c))
+    # Compute vertex normals from heightfield for proper shading
+    n = WORK_RES
+    h_map = height.reshape(n, n).astype(np.float32)
+    normals: list[tuple[float, float, float]] = []
+    # Precompute gradient offsets (simple central differences)
+    for j in range(n):
+        row_norms: list[tuple[float, float, float]] = []
+        for i in range(n):
+            h = h_map[j, i]
+            # Central difference: neighbors clamped to border
+            h_left  = h_map[j, i-1] if i > 0 else h
+            h_right = h_map[j, i+1] if i < n-1 else h
+            h_up    = h_map[j-1, i] if j > 0 else h
+            h_down  = h_map[j+1, i] if j < n-1 else h
+            dx = (h_right - h_left) / 2.0
+            dy = (h_up - h_down) / 2.0
+            # Normal = (-dx, -dy, 1) normalized, pointing upward
+            length = max(1e-6, math.hypot(dx, dy, 1.0))
+            nx, ny, nz = -dx/length, -dy/length, 1.0/length
+            normal = (nx, ny, nz)
+            row_norms.append(normal)
+        normals.append(row_norms)
+    # Flatten row-major to match verts (j*WORK_RES + i)
+    flat_normals: list[tuple[float, float, float]] = []
+    for j in range(n):
+        for i in range(n):
+            flat_normals.append(normals[j][i])
+
     # Write uniquely to avoid collisions: stem + work_res + timestamp
     import time as _time
+    import math
 
     safe_stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in stem)[:40]
     ts = int(_time.time() * 1000) % 1_000_000
     out_path = MESH_DIR / f"{safe_stem}_{WORK_RES}_{ts}.{fmt}"
     if fmt == "obj":
-        _write_obj(out_path, verts, cols, faces)
+        _write_obj_with_normals(out_path, verts, cols, flat_normals, faces)
     else:
         out_path = out_path.with_suffix(".obj")
-        _write_obj(out_path, verts, cols, faces)
+        _write_obj_with_normals(out_path, verts, cols, flat_normals, faces)
     return out_path, {"vertices": len(verts), "triangles": len(faces)}
 
 
-def _write_obj(path: Path, verts, cols, faces) -> None:
+def _write_obj_with_normals(path: Path, verts, cols, normals, faces) -> None:
     with path.open("w", encoding="utf-8") as fh:
         fh.write("# AstraForge procedural mesh v0.2\n")
         fh.write("o astraforge_object\n")
-        for (x, y, z), (r, g, b) in zip(verts, cols):
-            fh.write(f"v {x:.4f} {y:.4f} {z:.4f} {r:.3f} {g:.3f} {b:.3f}\n")
+        for (x, y, z), (r, g, b), (nx, ny, nz) in zip(verts, cols, normals):
+            fh.write(f"v {x:.4f} {y:.4f} {z:.4f} {r:.3f} {g:.3f} {b:.3f} {nx:.4f} {ny:.4f} {nz:.4f}\n")
         for a, b, c in faces:
             fh.write(f"f {a + 1} {b + 1} {c + 1}\n")
 
