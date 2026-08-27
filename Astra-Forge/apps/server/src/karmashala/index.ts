@@ -4,6 +4,7 @@ import { runVisionJob } from "../services/vision.js";
 import type { KarmashalaResult, ModelAsset } from "@astraforge/shared";
 
 type Intent =
+  | "greeting"
   | "status"
   | "list-projects"
   | "list-assets"
@@ -19,11 +20,13 @@ const VISION_KEYWORDS = ["mesh", "3d", "generate", "model", "image", "photo", "c
 const SPLIT_KEYWORDS = ["split", "cut", "slice", "part", "joint", "segment", "lego"];
 const LIST_PROJECT_KEYWORDS = ["project"];
 const LIST_ASSET_KEYWORDS = ["asset", "model list", "files"];
-const MUTATE_KEYWORDS = ["color", "recolor", "tint", "scale", "resize", "rotate", "spin", "move", "translate", "shift", "lift", "lower", "reset", "delete", "remove", "hide", "show", "duplicate"];
+const MUTATE_KEYWORDS = ["color", "recolor", "tint", "scale", "resize", "rotate", "spin", "move", "translate", "shift", "lift", "lower", "reset", "delete", "remove", "hide", "show", "duplicate", "red", "blue", "cyan", "green", "yellow", "orange", "purple", "pink", "white", "black", "bigger", "smaller", "larger"];
 const SPAWN_KEYWORDS = ["spawn", "add", "create", "place", "put", "drop", "import", "new"];
 const REDESIGN_KEYWORDS = ["redesign", "remix", "restyle", "transform", "reimagine"];
+const GREETING_KEYWORDS = ["hi", "hello", "hey", "hola", "greetings", "good morning", "good afternoon", "good evening", "howdy", "yo"];
 
 const INTENT_LABELS: Intent[] = [
+  "greeting",
   "status",
   "list-projects",
   "list-assets",
@@ -78,8 +81,13 @@ async function classify(text: string): Promise<Intent> {
 }
 
 function keywordClassify(text: string): Intent {
-  const lower = text.toLowerCase();
-  // Priority: redesign > split > vision > spawn > mutate > list > status > help
+  const lower = text.toLowerCase().trim();
+  // Very short greeting early-return (hi / hello / yo) — but not "make it red" etc.
+  if (lower.length <= 20 && GREETING_KEYWORDS.some((k) => lower === k || lower.startsWith(k + " ") || lower.startsWith(k + ",") || lower.includes(" " + k + " "))) return "greeting";
+  if (/^(hi|hello|hey|yo|howdy|hola)\b/i.test(lower) && lower.length < 30 && !MUTATE_KEYWORDS.some((k) => lower.includes(k))) return "greeting";
+  // natural "make it red/blue/..." is a mutate even without explicit color keyword in list
+  if (/make it \w+/.test(lower) || /turn \w+/.test(lower)) return "scene-mutate";
+  // Priority: redesign > split > vision > spawn > mutate > list > status > help > greeting
   if (REDESIGN_KEYWORDS.some((k) => lower.includes(k))) return "redesign";
   if (SPLIT_KEYWORDS.some((k) => lower.includes(k))) return "geometry-split";
   const isVision = VISION_KEYWORDS.some((k) => lower.includes(k));
@@ -91,11 +99,20 @@ function keywordClassify(text: string): Intent {
   if (LIST_ASSET_KEYWORDS.some((k) => lower.includes(k))) return "list-assets";
   if (lower.includes("status")) return "status";
   if (lower.includes("help")) return "help";
+  if (GREETING_KEYWORDS.some((k) => lower.includes(k))) return "greeting";
   return "unknown";
 }
 
 async function execute(intent: Intent, text: string): Promise<KarmashalaResult> {
   switch (intent) {
+    case "greeting": {
+      const [projectList, assetList] = await Promise.all([projects.list({ limit: 5 }), assets.list({ limit: 5 })]);
+      return {
+        ok: true,
+        intent,
+        output: `Hey! I'm Karmashala — your holographic co-pilot.\nProjects: ${projectList.length} · Assets: ${assetList.length}\nTry: 'help' · 'list projects' · 'generate mesh from asset <id>' · 'make it red' · 'scale up'`,
+      };
+    }
     case "status": {
       const [projectList, assetList, jobList] = await Promise.all([projects.list(), assets.list(), jobs.list()]);
       return {

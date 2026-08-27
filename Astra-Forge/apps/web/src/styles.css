@@ -1,32 +1,40 @@
 :root {
   --hologram: #00e5ff;
   --hologram-dim: #1a8fa0;
+  --hologram-2: #7c4dff;
   --bg-0: #04070f;
   --bg-1: #070c18;
   --bg-2: #0b1224;
+  --panel: rgba(13, 20, 38, 0.86);
   --panel-border: rgba(0, 229, 255, 0.22);
   --text: #d6f0ff;
   --text-dim: #6f9ab4;
   --danger: #ff4d6d;
   --ok: #22f5a2;
+  --warn: #ffb86b;
   --mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   --sans: "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 * { box-sizing: border-box; }
 * :focus-visible { outline: 2px solid var(--hologram); outline-offset: 2px; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.18); border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.28); }
+*::-webkit-scrollbar-track { background: transparent; }
 body {
   margin: 0;
   font-family: var(--sans);
-  background: radial-gradient(120% 120% at 50% 0%, #081226 0%, var(--bg-0) 60%);
+  background: radial-gradient(160% 120% at 50% -10%, #0a1a33 0%, #070c18 30%, var(--bg-0) 70%);
   color: var(--text);
   overflow: hidden;
   height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 #root { height: 100%; }
 .app {
   display: grid;
-  grid-template-rows: 48px 1fr 220px;
-  grid-template-columns: 280px 1fr;
+  grid-template-rows: 48px 1fr 236px;
+  grid-template-columns: 320px 1fr;
   grid-template-areas: "hud hud" "side stage" "term term";
   height: 100vh;
 }
@@ -35,82 +43,87 @@ body {
   display: flex; align-items: center; gap: 18px;
   padding: 0 16px;
   border-bottom: 1px solid var(--panel-border);
-  background: linear-gradient(180deg, rgba(7, 12, 24, 0.9), rgba(4, 7, 15, 0.6));
+  background: linear-gradient(180deg, rgba(9, 16, 32, 0.96), rgba(4, 7, 15, 0.78));
   z-index: 10;
+  backdrop-filter: blur(10px);
 }
-@supports (backdrop-filter: blur(6px)) {
-  .hud { backdrop-filter: blur(6px); }
-}
-.brand { font-size: 15px; letter-spacing: 4px; font-weight: 700; color: var(--hologram); text-shadow: 0 0 12px rgba(0, 229, 255, 0.8); }
-.brand .forge { color: var(--text); opacity: 0.7; }
-.status-dots { display: flex; gap: 14px; margin-left: auto; }
-.status-dot { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: #8fb9d6; }
-.status-dot .led { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: breathe 2.4s ease-in-out infinite; }
-.status-dot .led.off { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-@keyframes breathe { 0%,100%{opacity:1} 50%{opacity:0.35} }
+.brand { font-size: 15px; letter-spacing: 4px; font-weight: 800; color: var(--hologram); text-shadow: 0 0 16px rgba(0, 229, 255, 0.9); }
+.brand .forge { color: var(--text); opacity: 0.72; }
+.status-dots { display: flex; gap: 12px; margin-left: auto; align-items: center; }
+.status-dot { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.6px; color: #8fb9d6; padding: 4px 8px; border-radius: 999px; background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.12); }
+.status-dot .led { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: breathe 2.4s ease-in-out infinite; flex-shrink: 0; }
+.status-dot .led.off { background: var(--danger); box-shadow: 0 0 10px var(--danger); animation: none; opacity: 0.95; }
+.status-dot .led.warn { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+@keyframes breathe { 0%,100%{opacity:1; transform: scale(1)} 50%{opacity:0.55; transform: scale(0.92)} }
 @media (prefers-reduced-motion: reduce) { .status-dot .led{ animation: none; } }
 .sidebar {
   grid-area: side;
   border-right: 1px solid var(--panel-border);
-  background: var(--bg-1);
+  background: linear-gradient(180deg, var(--bg-1), #050a16);
   padding: 14px;
   display: flex; flex-direction: column; gap: 18px;
   overflow-y: auto; z-index: 5;
 }
-h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 2px; color: var(--hologram-dim); text-transform: uppercase; }
+h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: 2.2px; color: var(--hologram-dim); text-transform: uppercase; font-weight: 700; }
 .btn {
-  font-family: var(--mono); font-size: 12px; color: var(--text);
-  background: linear-gradient(180deg, rgba(0, 229, 255, 0.12), rgba(0, 229, 255, 0.04));
-  border: 1px solid var(--panel-border); padding: 8px 12px; border-radius: 4px; cursor: pointer; transition: all 0.15s;
+  font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text);
+  background: linear-gradient(180deg, rgba(0, 229, 255, 0.14), rgba(0, 229, 255, 0.06));
+  border: 1px solid var(--panel-border); padding: 8px 12px; border-radius: 6px; cursor: pointer; transition: all 0.16s ease;
 }
-.btn:hover { background: rgba(0, 229, 255, 0.22); box-shadow: 0 0 14px rgba(0, 229, 255, 0.25); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn.active { background: rgba(0, 229, 255, 0.3); box-shadow: 0 0 16px rgba(0, 229, 255, 0.4); }
+.btn:hover { background: rgba(0, 229, 255, 0.22); box-shadow: 0 0 14px rgba(0, 229, 255, 0.28); transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.44; cursor: not-allowed; transform: none; }
+.btn.active { background: rgba(0, 229, 255, 0.28); box-shadow: 0 0 18px rgba(0, 229, 255, 0.42); color: #fff; }
 .input {
   width: 100%; font-family: var(--mono); font-size: 12px;
-  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--panel-border); color: var(--text);
-  padding: 8px 10px; border-radius: 4px; outline: none;
+  background: rgba(0, 0, 0, 0.42); border: 1px solid rgba(0,229,255,0.18); color: var(--text);
+  padding: 9px 10px; border-radius: 6px; outline: none; transition: border-color .15s, box-shadow .15s;
 }
-.input:focus { border-color: var(--hologram); }
+.input:focus { border-color: var(--hologram); box-shadow: 0 0 0 3px rgba(0,229,255,0.12); }
 .list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .list li {
-  font-family: var(--mono); font-size: 12px; padding: 8px 10px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; transition: all 0.15s; word-break: break-all;
+  font-family: var(--mono); font-size: 12px; padding: 9px 10px; border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; cursor: pointer; transition: all 0.16s; word-break: break-all; background: rgba(255,255,255,0.02);
 }
-.list li:hover { background: rgba(0, 229, 255, 0.08); }
-.list li.selected { border-color: var(--panel-border); background: rgba(0, 229, 255, 0.12); color: #fff; }
+.list li:hover { background: rgba(0, 229, 255, 0.08); border-color: rgba(0,229,255,0.14); }
+.list li.selected { border-color: var(--panel-border); background: rgba(0, 229, 255, 0.14); color: #fff; box-shadow: 0 4px 14px rgba(0,229,255,0.12); }
 .list li .tag { color: var(--hologram-dim); font-size: 10px; }
-.list li .status.ready { color: var(--ok); }
-.list li .status.failed { color: var(--danger); }
-.file-upload { position: relative; overflow: hidden; }
+.list li .status.ready { color: var(--ok); font-weight: 700; }
+.list li .status.uploaded { color: var(--warn); }
+.list li .status.failed { color: var(--danger); font-weight: 700; }
+.file-upload { position: relative; overflow: hidden; border-style: dashed; }
+.file-upload.active { border-color: var(--hologram); background: rgba(0,229,255,0.14); }
 .file-upload input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.stage { grid-area: stage; position: relative; overflow: hidden; }
+.stage { grid-area: stage; position: relative; overflow: hidden; background: radial-gradient(120% 80% at 50% 10%, rgba(0,229,255,0.06), transparent 60%), linear-gradient(180deg, #050a16, #04070f); }
 .stage canvas { outline: none; }
 .stage-overlay {
-  position: absolute; left: 16px; bottom: 14px; font-family: var(--mono); font-size: 11px; color: var(--hologram-dim);
-  background: rgba(4, 7, 15, 0.55); border: 1px solid var(--panel-border); padding: 6px 10px; border-radius: 4px;
+  position: absolute; left: 16px; bottom: 14px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.4px; color: var(--hologram-dim);
+  background: rgba(4, 7, 15, 0.62); border: 1px solid var(--panel-border); padding: 7px 10px; border-radius: 6px; backdrop-filter: blur(8px);
 }
 .view-toggle { position: absolute; right: 16px; top: 14px; display: flex; gap: 8px; z-index: 10; }
 .job-toast {
   position: absolute; left: 50%; top: 14px; transform: translateX(-50%); font-family: var(--mono); font-size: 12px; color: var(--text);
-  background: rgba(4, 7, 15, 0.85); border: 1px solid var(--panel-border); padding: 8px 14px; border-radius: 4px; z-index: 10;
+  background: rgba(4, 7, 15, 0.92); border: 1px solid var(--panel-border); padding: 10px 14px; border-radius: 8px; z-index: 10; backdrop-filter: blur(8px); box-shadow: 0 10px 30px rgba(0,0,0,0.4);
 }
-@supports (backdrop-filter: blur(6px)) { .job-toast, .stage-overlay{ backdrop-filter: blur(6px); } }
-.progress-track { width: 180px; height: 5px; margin-top: 6px; background: rgba(0, 229, 255, 0.12); border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; background: var(--hologram); box-shadow: 0 0 10px var(--hologram); transition: width 0.3s; }
-.terminal { grid-area: term; display: flex; flex-direction: column; border-top: 1px solid var(--panel-border); background: rgba(3, 6, 12, 0.9); font-family: var(--mono); }
-.terminal-head { display: flex; align-items: center; gap: 10px; padding: 6px 14px; font-size: 11px; letter-spacing: 2px; color: var(--hologram-dim); border-bottom: 1px solid var(--panel-border); }
-.terminal-logs { flex: 1; overflow-y: auto; padding: 8px 14px; font-size: 12px; line-height: 1.7; }
-.terminal-logs .prompt { color: var(--hologram); }
+.job-toast.error { border-color: rgba(255,77,109,0.5); background: rgba(20, 6, 10, 0.92); }
+.progress-track { width: 200px; height: 6px; margin-top: 8px; background: rgba(0, 229, 255, 0.12); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--hologram), var(--hologram-2)); box-shadow: 0 0 10px var(--hologram); transition: width 0.35s ease; }
+.terminal { grid-area: term; display: flex; flex-direction: column; border-top: 1px solid var(--panel-border); background: linear-gradient(180deg, rgba(3, 6, 12, 0.96), rgba(2, 5, 10, 0.98)); font-family: var(--mono); }
+.terminal-head { display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-size: 10px; letter-spacing: 2.4px; color: var(--hologram-dim); border-bottom: 1px solid var(--panel-border); font-weight: 700; }
+.terminal-logs { flex: 1; overflow-y: auto; padding: 10px 14px; font-size: 12px; line-height: 1.7; }
+.terminal-logs .prompt { color: var(--hologram); font-weight: 700; }
 .terminal-logs .error { color: var(--danger); }
 .terminal-logs .info { color: var(--text); }
-.terminal-logs .warn { color: #ffb86b; }
-.terminal-input { display: flex; gap: 10px; padding: 8px 14px; border-top: 1px solid var(--panel-border); }
-.terminal-input .prompt { color: var(--hologram); font-size: 13px; line-height: 32px; }
+.terminal-logs .warn { color: var(--warn); }
+.terminal-input { display: flex; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--panel-border); background: rgba(0,0,0,0.18); }
+.terminal-input .prompt { color: var(--hologram); font-size: 13px; line-height: 34px; font-weight: 700; }
 .terminal-input input { flex: 1; }
-.thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 3px; border: 1px solid var(--panel-border); vertical-align: middle; margin-right: 6px; }
+.thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; border: 1px solid var(--panel-border); vertical-align: middle; margin-right: 6px; background: #0a1220; }
 /* Responsive */
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 300px 1fr; }
+}
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: 48px auto 1fr 220px; grid-template-areas: "hud" "side" "stage" "term"; }
-  .sidebar { max-height: 280px; }
-  .stage { min-height: 360px; }
+  .app { grid-template-columns: 1fr; grid-template-rows: 48px auto 1fr 236px; grid-template-areas: "hud" "side" "stage" "term"; }
+  .sidebar { max-height: 320px; }
+  .stage { min-height: 420px; }
 }

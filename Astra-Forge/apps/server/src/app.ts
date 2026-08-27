@@ -33,9 +33,14 @@ export function createApp(): express.Express {
 
   app.use(express.json({ limit: "2mb" }));
 
-  // Health with DB status
+  // Health with DB + vision + ollama aggregation
   app.get("/api/health", async (_req, res) => {
     const { isMemoryMode } = await import("./db.js");
+    let vision: string = "unknown";
+    try {
+      const r = await fetch(`${config.visionServiceUrl}/health`, { signal: AbortSignal.timeout(1500) });
+      vision = r.ok ? "online" : `http_${r.status}`;
+    } catch { vision = "offline"; }
     res.json({
       ok: true,
       service: "astraforge-server",
@@ -43,6 +48,7 @@ export function createApp(): express.Express {
       env: config.nodeEnv,
       uptime: process.uptime(),
       storage: isMemoryMode() ? "memory" : "mongodb",
+      vision,
       time: new Date().toISOString(),
     });
   });
@@ -71,11 +77,20 @@ export function createApp(): express.Express {
     res.status(404).json({ error: `Not found: ${req.method} ${req.path}`, code: "NOT_FOUND" });
   });
 
-  // Central error handler
+  // Central error handler (handles multer + validation cleanly)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof HttpError) {
       res.status(error.status).json({ error: error.message, code: error.code });
+      return;
+    }
+    // multer / fileFilter string errors
+    if (error instanceof Error && error.message.startsWith("Unsupported")) {
+      res.status(400).json({ error: error.message, code: "UNSUPPORTED_TYPE" });
+      return;
+    }
+    if (error && typeof error === "object" && "code" in error && (error as { code: string }).code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: "file too large (max 15MB)", code: "FILE_TOO_LARGE" });
       return;
     }
     if (error && typeof error === "object" && "status" in error) {

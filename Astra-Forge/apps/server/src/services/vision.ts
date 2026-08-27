@@ -47,6 +47,13 @@ export async function runVisionJob(assetId: string): Promise<PipelineJob> {
         throw new Error(`source image not found: ${sourceFilename}`);
       }
 
+      // Early check: vision health for better error
+      try {
+        const h = await fetch(`${config.visionServiceUrl}/health`, { signal: AbortSignal.timeout(2000) });
+        if (!h.ok) throw new Error(`vision health http ${h.status}`);
+      } catch {
+        throw new Error(`vision service offline at ${config.visionServiceUrl} — run: npm run vision:dev (or npm run dev:all)`);
+      }
       const url = `${config.visionServiceUrl}/api/generate`;
       const response = await fetch(url, {
         method: "POST",

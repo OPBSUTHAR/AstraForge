@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c cyan,magenta --kill-others-on-fail \"npm run dev -w @astraforge/server\" \"npm run dev -w @astraforge/web\"",
+    "dev:all": "concurrently -n server,web,vision -c cyan,magenta,yellow --kill-others-on-fail \"npm run dev -w @astraforge/server\" \"npm run dev -w @astraforge/web\" \"npm run vision:dev\"",
     "dev:server": "npm run dev -w @astraforge/server",
     "dev:web": "npm run dev -w @astraforge/web",
     "build": "npm run build -w @astraforge/shared && npm run build -w @astraforge/server && npm run build -w @astraforge/web",
