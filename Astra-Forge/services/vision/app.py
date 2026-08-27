@@ -633,7 +633,7 @@ def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, i
             dx = (h_right - h_left) / 2.0
             dy = (h_up - h_down) / 2.0
             # Normal = (-dx, -dy, 1) normalized, pointing upward
-            length = max(1e-6, math.hypot(dx, dy, 1.0))
+            length = max(1e-6, (dx*dx + dy*dy + 1.0) ** 0.5)
             nx, ny, nz = -dx/length, -dy/length, 1.0/length
             normal = (nx, ny, nz)
             row_norms.append(normal)
