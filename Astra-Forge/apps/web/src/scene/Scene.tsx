@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, Grid, Stars, Html, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import { MeshAsset } from "./MeshAsset";
@@ -10,6 +10,8 @@ interface SceneProps {
   color: string;
   activeAsset: ModelAsset | null;
   onTransform?: (payload: { position?: [number, number, number]; rotation?: [number, number, number]; scale?: [number, number, number] }) => void;
+  wireframe?: boolean;
+  viewResetKey?: number;
 }
 
 function LoaderFallback() {
@@ -22,12 +24,9 @@ function LoaderFallback() {
 
 function EmptyState() {
   return (
-    <Html center>
-      <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)", background: "rgba(4,7,15,0.72)", padding: "12px 16px", borderRadius: 8, border: "1px solid rgba(0,229,255,0.18)", textAlign: "center", maxWidth: 300 }}>
-        <div style={{ color: "var(--hologram)", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>NO MODEL LOADED</div>
-        <div>Import a JPG, PNG or EPS image</div>
-        <div style={{ opacity: 0.7, marginTop: 4 }}>then click Generate 3D mesh</div>
-        <div style={{ opacity: 0.5, marginTop: 8, fontSize: 10 }}>orbit: left-drag · pan: right-drag · zoom: wheel · gizmo: T/R/S</div>
+    <Html position={[0, -0.9, 0]} center>
+      <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "rgba(214,240,255,0.45)", background: "transparent", padding: 0, textAlign: "center", pointerEvents: "none", userSelect: "none" }}>
+        <div style={{ letterSpacing: 1.2, opacity: 0.6 }}>— drop image to generate · scroll to zoom —</div>
       </div>
     </Html>
   );
@@ -35,12 +34,13 @@ function EmptyState() {
 
 type Mode = "translate" | "rotate" | "scale";
 
-export function Scene({ color, activeAsset, onTransform }: SceneProps) {
+export function Scene({ color, activeAsset, onTransform, wireframe = false, viewResetKey = 0 }: SceneProps) {
   const hasMesh = activeAsset?.meshUrl || (activeAsset?.path && activeAsset.status === "ready");
   const meshUrl = activeAsset?.meshUrl ?? (hasMesh ? `/meshes/${activeAsset?.path}` : null);
   const [mode, setMode] = useState<Mode>("translate");
   const [orbitEnabled, setOrbitEnabled] = useState(true);
   const groupRef = useRef<THREE.Group>(null);
+  const controlsRef = useRef<unknown>(null);
 
   // Sync persisted transform from server to outer group
   useEffect(() => {
@@ -96,7 +96,7 @@ export function Scene({ color, activeAsset, onTransform }: SceneProps) {
       {meshUrl ? (
         <Suspense fallback={<LoaderFallback />}>
           <group ref={groupRef}>
-            <MeshAsset url={meshUrl} color={color} />
+            <MeshAsset url={meshUrl} color={color} wireframe={wireframe} />
           </group>
           <TransformControls
             object={groupRef as unknown as THREE.Object3D}
@@ -133,6 +133,7 @@ export function Scene({ color, activeAsset, onTransform }: SceneProps) {
       )}
 
       <OrbitControls
+        ref={controlsRef as never}
         makeDefault
         enabled={orbitEnabled}
         enableDamping
@@ -144,6 +145,19 @@ export function Scene({ color, activeAsset, onTransform }: SceneProps) {
         mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}
         touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
       />
+      <ResetWatcher resetKey={viewResetKey} controlsRef={controlsRef} />
     </Canvas>
   );
+}
+
+function ResetWatcher({ resetKey, controlsRef }: { resetKey: number; controlsRef: React.MutableRefObject<unknown> }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    if (resetKey === 0) return;
+    (camera as THREE.PerspectiveCamera).position.set(6, 4.5, 8);
+    const c = controlsRef.current as { target?: THREE.Vector3; update?: () => void } | null;
+    if (c?.target) c.target.set(0, 0, 0);
+    c?.update?.();
+  }, [resetKey, camera, controlsRef]);
+  return null;
 }

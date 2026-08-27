@@ -107,6 +107,12 @@ h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: 2.2px; color: var(--holog
 .inspector .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; margin: 8px 0; font-family: var(--mono); font-size: 11px; }
 .inspector .field > span:first-child { color: var(--hologram-dim); font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; font-size: 10px; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.tool-shelf { position: absolute; left: 12px; top: 56px; display: flex; flex-direction: column; gap: 8px; z-index: 9; background: rgba(4,7,15,0.72); border: 1px solid rgba(0,229,255,0.14); border-radius: 10px; padding: 8px; backdrop-filter: blur(8px); }
+.tool-btn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); color: var(--text); cursor: pointer; font-size: 14px; }
+.tool-btn:hover, .tool-btn.active { background: rgba(0,229,255,0.18); border-color: var(--panel-border); }
+.help-sheet { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,0.45); z-index: 20; backdrop-filter: blur(4px); }
+.help-inner { background: rgba(13,20,38,0.96); border: 1px solid var(--panel-border); border-radius: 12px; padding: 18px; width: 380px; max-width: 90%; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.help-inner h4 { margin: 0 0 12px; letter-spacing: 1.2px; font-size: 12px; color: var(--hologram); }
 .stage { grid-area: stage; position: relative; overflow: hidden; background: radial-gradient(160% 90% at 50% 0%, rgba(0,229,255,0.08), transparent 60%), linear-gradient(180deg, #060a16, #04070f); }
 .stage canvas { outline: none; }
 .stage-overlay {

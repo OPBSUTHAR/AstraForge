@@ -51,6 +51,9 @@ export function App() {
   const [assetFilter, setAssetFilter] = useState<"all" | "ready" | "uploaded" | "failed">("all");
   const [assetSearch, setAssetSearch] = useState("");
   const [editingName, setEditingName] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
+  const [wireframe, setWireframe] = useState(false);
+  const [viewResetKey, setViewResetKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [termLines, setTermLines] = useState<TermLine[]>([
     { timestamp: new Date().toISOString(), level: "info", message: "Karmashala online. Type 'hi', 'help', 'status'." },
@@ -72,15 +75,25 @@ export function App() {
     window.history.replaceState({}, "", url.toString());
   }, [projectId]);
 
+  // Clean start: don't auto-select project — onboarding stays until user picks
   useEffect(() => {
     let cancelled = false;
     api.listProjects().then((list) => {
       if (cancelled) return;
       setProjects(list);
-      if (!projectId && list.length > 0) setProjectId((prev) => prev ?? list[0].id);
     }).catch((e) => pushTerm("error", e.message));
     return () => { cancelled = true; };
   }, [pushTerm]);
+
+  const handleClearAll = useCallback(async () => {
+    if (!confirm("Clear all projects and assets? This cannot be undone.")) return;
+    try {
+      for (const p of projects) await fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+      setProjects([]); setProjectId(null); setAssets([]); setActiveAssetId(null);
+      history.replaceState({}, "", window.location.pathname);
+      pushTerm("info", "workspace cleared");
+    } catch (e) { pushTerm("error", (e as Error).message); }
+  }, [projects, pushTerm]);
 
   useEffect(() => {
     let alive = true;
@@ -271,21 +284,28 @@ export function App() {
 
       {/* Blender-like useful sidebar */}
       <aside className="sidebar" aria-label="Forge sidebar">
-        {/* PROJECTS */}
+        {/* PROJECTS — clean start, no forced selection */}
         <section className="panel">
-          <div className="panel-head"><h3>◆ Project</h3><span className="tag">{projects.length} total</span></div>
+          <div className="panel-head"><h3>◆ Project</h3><div style={{ display: "flex", gap: 6, alignItems: "center" }}><span className="tag">{projects.length} total</span>{projects.length>0 && <button className="btn" style={{ padding: "3px 6px", fontSize: 10 }} onClick={() => void handleClearAll()} title="Clear all projects (demo reset)">Clear</button>}</div></div>
           <div style={{ display: "flex", gap: 8 }}>
             <input className="input" aria-label="New project name" placeholder="New project…" value={newProjectName} onChange={(e) => setNewProjectName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void handleCreateProject()} />
             <button className="btn" aria-label="Create project" onClick={() => void handleCreateProject()} disabled={!newProjectName.trim()}>＋</button>
           </div>
-          <ul className="list" style={{ marginTop: 10, maxHeight: 160, overflowY: "auto" }}>
-            {projects.map((p) => (
-              <li key={p.id} className={p.id === projectId ? "selected" : ""} onClick={() => setProjectId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setProjectId(p.id)}>
-                {p.name} <div className="tag">{p.id.slice(0, 8)} · {p.assetIds.length} assets</div>
-              </li>
-            ))}
-            {projects.length === 0 && <li style={{ opacity: 0.6, cursor: "default" }}>no projects — create one</li>}
-          </ul>
+          {projects.length === 0 ? (
+            <div style={{ marginTop: 10, padding: "10px 10px", borderRadius: 8, background: "rgba(0,229,255,0.06)", border: "1px solid rgba(0,229,255,0.12)", fontFamily: "var(--mono)", fontSize: 11, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: "var(--hologram)" }}>Welcome — no workspace yet</div>
+              <div style={{ opacity: 0.8 }}>Drop an image below or create a project to begin. Nothing is pre-loaded.</div>
+            </div>
+          ) : (
+            <ul className="list" style={{ marginTop: 10, maxHeight: 160, overflowY: "auto" }}>
+              {projects.map((p) => (
+                <li key={p.id} className={p.id === projectId ? "selected" : ""} onClick={() => setProjectId(p.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setProjectId(p.id)}>
+                  {p.name} <div className="tag">{p.id.slice(0, 8)} · {p.assetIds.length} assets</div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {projectId === null && projects.length > 0 && <div className="tag" style={{ marginTop: 8 }}>Select a project or drop an image to auto-create one</div>}
         </section>
 
         {/* IMPORT — file operations with auto-reframe */}
@@ -330,7 +350,7 @@ export function App() {
           {activeAsset?.status === "failed" && <button className="btn" style={{ marginTop: 8, width: "100%", borderColor: "var(--danger)" }} onClick={() => void handleRunVision(activeAsset.id)}>↻ Retry vision</button>}
         </section>
 
-        {/* INSPECTOR — Blender-like properties */}
+        {/* INSPECTOR — Blender-like properties with numeric transform */}
         {activeAsset && (
           <section className="panel inspector">
             <div className="panel-head"><h3>⬔ Inspector</h3><span className="tag">{activeAsset.source}</span></div>
@@ -338,8 +358,50 @@ export function App() {
             <div className="field"><span>Status</span><span className={`status ${activeAsset.status}`} style={{ fontWeight: 700 }}>{activeAsset.status}</span> {activeAsset.meshUrl && <a href={activeAsset.meshUrl} target="_blank" rel="noreferrer" className="tag" style={{ marginLeft: 8, color: "var(--hologram)" }}>open .obj</a>}</div>
             {activeAsset.stats && <div className="field"><span>Stats</span><span className="tag">{activeAsset.stats.vertices} verts · {activeAsset.stats.triangles} tris</span></div>}
             <label className="field"><span>Hologram</span><input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 44, height: 28, border: "none", background: "none", padding: 0 }} /></label>
-            <div className="field"><span>Transform</span><span className="tag">drag gizmo (T/R/S) or use keys Del ± R 0</span></div>
-            <div className="btn-row">
+            <div className="field" style={{ alignItems: "start" }}><span>Location</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {(["0","1","2"] as const).map((idx) => {
+                  const axis = ["X","Y","Z"][Number(idx)] as "X"|"Y"|"Z";
+                  const val = activeAsset.transform?.position?.[Number(idx)] ?? 0;
+                  return <label key={axis} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11 }}><span style={{ minWidth: 12, opacity: 0.6 }}>{axis}</span><input className="input" type="number" step={0.05} value={val} onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0;
+                    const pos = [...(activeAsset.transform?.position ?? [0,0,0])] as [number,number,number];
+                    pos[Number(idx)] = v;
+                    sendScene({ action: "mutate", target: activeAsset.id, payload: { position: pos } });
+                  }} style={{ padding: "6px 6px" }} /></label>;
+                })}
+              </div>
+            </div>
+            <div className="field" style={{ alignItems: "start" }}><span>Rotation</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {(["0","1","2"] as const).map((idx) => {
+                  const axis = ["X","Y","Z"][Number(idx)] as "X"|"Y"|"Z";
+                  const val = activeAsset.transform?.rotation?.[Number(idx)] ?? 0;
+                  return <label key={axis} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11 }}><span style={{ minWidth: 12, opacity: 0.6 }}>{axis}</span><input className="input" type="number" step={0.1} value={val} onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0;
+                    const rot = [...(activeAsset.transform?.rotation ?? [0,0,0])] as [number,number,number];
+                    rot[Number(idx)] = v;
+                    sendScene({ action: "mutate", target: activeAsset.id, payload: { rotation: rot } });
+                  }} style={{ padding: "6px 6px" }} /></label>;
+                })}
+              </div>
+            </div>
+            <div className="field" style={{ alignItems: "start" }}><span>Scale</span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {(["0","1","2"] as const).map((idx) => {
+                  const axis = ["X","Y","Z"][Number(idx)] as "X"|"Y"|"Z";
+                  const val = activeAsset.transform?.scale?.[Number(idx)] ?? 1;
+                  return <label key={axis} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 11 }}><span style={{ minWidth: 12, opacity: 0.6 }}>{axis}</span><input className="input" type="number" step={0.05} min={0.05} value={val} onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 1;
+                    const scl = [...(activeAsset.transform?.scale ?? [1,1,1])] as [number,number,number];
+                    scl[Number(idx)] = Math.max(0.05, v);
+                    sendScene({ action: "mutate", target: activeAsset.id, payload: { scale: scl } });
+                  }} style={{ padding: "6px 6px" }} /></label>;
+                })}
+              </div>
+            </div>
+            <div className="tag" style={{ marginTop: 4 }}>Gizmo: <b>T</b> move · <b>R</b> rotate · <b>S</b> scale · drag or type values · <b>Del</b> delete · <b>0</b> reset</div>
+            <div className="btn-row" style={{ marginTop: 10 }}>
               <button className="btn" onClick={() => void handleDownload()} disabled={!activeAsset.meshUrl}>⬇ Download OBJ</button>
               <button className="btn" onClick={() => void handleDuplicate()}>⎘ Duplicate</button>
               <button className="btn" style={{ borderColor: "var(--danger)" }} onClick={() => activeAsset && void handleDeleteAsset(activeAsset.id)}>Delete</button>
@@ -363,11 +425,40 @@ export function App() {
       </aside>
 
       <main className="stage" aria-label="Holographic stage">
-        <div className="view-toggle">
-          <button className="btn" title="Reset view (0)" onClick={() => activeAssetId && sendScene({ action: "mutate", target: activeAssetId, payload: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } })}>Reset</button>
-          <button className="btn" title="Tips" onClick={() => pushTerm("info", "Tips: left-drag orbit · scroll dolly · right-drag pan · T/R/S gizmo · Del delete · +/- scale · R rotate · 0 reset · drag & drop import")}>Help</button>
+        {/* Blender-like tool shelf */}
+        <div className="tool-shelf" aria-label="Tool shelf">
+          <button className="tool-btn" title="Move (G / T)" onClick={() => pushTerm("info", "Gizmo: press T for Move")}>↕</button>
+          <button className="tool-btn" title="Rotate (R)" onClick={() => pushTerm("info", "Gizmo: press R for Rotate")}>↻</button>
+          <button className="tool-btn" title="Scale (S)" onClick={() => pushTerm("info", "Gizmo: press S for Scale")}>⤢</button>
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
+          <button className={`tool-btn ${wireframe ? "active" : ""}`} title="Wireframe toggle" onClick={() => setWireframe((v) => !v)}>▦</button>
+          <button className="tool-btn" title="Reset object (0) + view" onClick={() => { if (activeAssetId) sendScene({ action: "mutate", target: activeAssetId, payload: { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] } }); setViewResetKey((k)=>k+1); }}>⌖</button>
         </div>
-        <Scene color={color} activeAsset={activeAsset} onTransform={(payload) => activeAssetId && sendScene({ action: "mutate", target: activeAssetId, payload })} />
+        <div className="view-toggle">
+          <button className="btn" title="Reset object & view" onClick={() => { if (activeAssetId) sendScene({ action: "mutate", target: activeAssetId, payload: { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] } }); setViewResetKey((k)=>k+1); }}>Reset</button>
+          <button className="btn" title="Shortcuts" onClick={() => setShowHelp((v)=>!v)}>Help</button>
+          <button className={`btn ${wireframe?"active":""}`} title="Toggle wireframe" onClick={() => setWireframe((v)=>!v)}>Wire</button>
+        </div>
+        <Scene color={color} activeAsset={activeAsset} onTransform={(payload) => activeAssetId && sendScene({ action: "mutate", target: activeAssetId, payload })} wireframe={wireframe} viewResetKey={viewResetKey} />
+        {showHelp && (
+          <div className="help-sheet" onClick={()=>setShowHelp(false)} role="dialog" aria-label="Shortcuts">
+            <div className="help-inner" onClick={(e)=>e.stopPropagation()}>
+              <h4>Blender-like shortcuts</h4>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontFamily: "var(--mono)", fontSize: 11 }}>
+                <span>LMB drag</span><span>Orbit</span>
+                <span>Scroll</span><span>Dolly zoom</span>
+                <span>RMB drag</span><span>Pan</span>
+                <span>T / G</span><span>Move gizmo</span>
+                <span>R</span><span>Rotate gizmo</span>
+                <span>S</span><span>Scale gizmo</span>
+                <span>0</span><span>Reset object + view</span>
+                <span>Del</span><span>Delete selected</span>
+                <span>X/Y/Z (while dragging)</span><span>Axis lock (hold)</span>
+              </div>
+              <button className="btn" style={{ marginTop: 12, width: "100%" }} onClick={()=>setShowHelp(false)}>Close</button>
+            </div>
+          </div>
+        )}
         {job && (
           <div className={`job-toast ${job.status === "failed" ? "error" : ""}`} role="status" aria-live="polite">
             {job.type} · {job.status} {job.error ? `— ${job.error.slice(0, 140)}` : ""}

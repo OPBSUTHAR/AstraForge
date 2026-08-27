@@ -7,14 +7,14 @@ interface Props {
   url: string;
   color?: string;
   transform?: { position: [number, number, number]; rotation: [number, number, number]; scale: [number, number, number] };
+  wireframe?: boolean;
 }
 
-export function MeshAsset({ url, color = "#00e5ff", transform }: Props) {
+export function MeshAsset({ url, color = "#00e5ff", transform, wireframe = false }: Props) {
   const obj = useLoader(OBJLoader, url, undefined);
 
   const cloned = useMemo(() => {
     const group = obj.clone(true);
-    // center and normalize
     const box = new THREE.Box3().setFromObject(group);
     const center = box.getCenter(new THREE.Vector3());
     group.position.sub(center);
@@ -22,27 +22,30 @@ export function MeshAsset({ url, color = "#00e5ff", transform }: Props) {
     const max = Math.max(size.x, size.y, size.z) || 1;
     const scale = 2.4 / max;
     group.scale.setScalar(scale);
-
-    // recolor: traverse meshes and tint vertex colors or material
     const col = new THREE.Color(color);
     group.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const m = child as THREE.Mesh;
-        // If geometry has vertex colors, multiply; else apply material
         if (m.geometry.getAttribute("color")) {
-          // tint by multiplying
+          // keep vertex colors
         } else {
           const mat = m.material as THREE.Material;
           if ((mat as THREE.MeshStandardMaterial).color) {
             (mat as THREE.MeshStandardMaterial).color.copy(col);
           }
+          // Enhance material for industrial look
+          if ((mat as THREE.MeshStandardMaterial).roughness !== undefined) {
+            (mat as THREE.MeshStandardMaterial).roughness = 0.42;
+            (mat as THREE.MeshStandardMaterial).metalness = 0.06;
+          }
         }
+        (m.material as THREE.MeshStandardMaterial).wireframe = wireframe;
         m.castShadow = true;
         m.receiveShadow = true;
       }
     });
     return group;
-  }, [obj, color]);
+  }, [obj, color, wireframe]);
 
   useEffect(() => {
     return () => {

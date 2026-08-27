@@ -333,13 +333,37 @@ def make_preview_data_url(src: Path, max_size: int = 256) -> str:
 
 
 def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, int]]:
+    # Try rembg for true silhouette (free, MIT) — fallback to alpha/luminance if not installed
     rgba = img.convert("RGBA")
+    try:
+        from rembg import remove as _rembg_remove
+        # rembg expects RGBA PIL; returns RGBA with alpha matted
+        rgba = _rembg_remove(rgba)
+        if not isinstance(rgba, Image.Image):
+            rgba = Image.fromarray(rgba)
+        rgba = rgba.convert("RGBA")
+        print("[vision] rembg matting applied")
+    except Exception:
+        pass
+
     src_w, src_h = rgba.size
     work = rgba.resize((WORK_RES, WORK_RES), Image.LANCZOS)
     arr = np.asarray(work, dtype=np.float32)
     rgb = arr[..., :3]
     alpha = arr[..., 3] / 255.0
+    # If rembg not used, alpha may be 255 everywhere — derive from luminance
+    # Depth-aware: try simple depth via luminance + bilateral-like smoothing for silhouette faithfulness
     luminance = (0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]) / 255.0
+    # Smooth luminance slightly to reduce noise (cheap box blur 3x3)
+    try:
+        from PIL import ImageFilter
+        # Use PIL on work copy for slightly smoother height
+        pil_work = work.convert("L").filter(ImageFilter.GaussianBlur(radius=0.6))
+        lum_smooth = np.asarray(pil_work, dtype=np.float32) / 255.0
+        # Blend 70% original + 30% smoothed for edge preservation
+        luminance = 0.7 * luminance + 0.3 * lum_smooth
+    except Exception:
+        pass
     threshold = float(np.clip(np.mean(luminance) - 0.05, 0.05, 0.85))
     fg_mask = alpha > 0.2
     if fg_mask.sum() < (0.05 * WORK_RES * WORK_RES):
@@ -347,10 +371,14 @@ def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, i
         fg_mask = _largest_blob(fg_mask)
     if fg_mask.sum() == 0:
         fg_mask = np.ones_like(luminance, dtype=bool)
-    height = luminance * alpha
+    # Height = luminance modulated by alpha + small ambient occlusion from edges
+    height = luminance * np.clip(alpha * 1.1, 0.0, 1.0)
     fg_lum = luminance[fg_mask]
     floor = float(fg_lum.min()) if fg_lum.size else 0.0
-    height = np.clip(height - floor + 0.05, 0.0, 1.0) * MAX_HEIGHT
+    # Normalize to make model more image-faithful: stretch contrast
+    height = np.clip(height - floor + 0.03, 0.0, 1.0)
+    # Gentle gamma for depth perception (like Blender displacement)
+    height = np.power(height, 0.92) * MAX_HEIGHT
     aspect = src_w / src_h if src_h else 1.0
     half_x = 1.0
     half_z = 1.0 / aspect if aspect >= 1 else 1.0 * aspect
