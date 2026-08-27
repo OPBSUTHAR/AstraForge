@@ -188,7 +188,11 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
         raw_copy.info["analysis"] = analysis  # type: ignore
         mesh_path, stats = await run_in_threadpool(build_mesh, raw_copy, src.stem, out_format)
         elapsed = int((time.monotonic() - t0) * 1000)
-        preview = await run_in_threadpool(make_preview_data_url, src)
+        # Preview: if background was removed, show matted version so user sees verification
+        try:
+            preview = await run_in_threadpool(make_preview_from_image, raw_copy)
+        except Exception:
+            preview = await run_in_threadpool(make_preview_data_url, src)
         return {
             "meshPath": str(mesh_path),
             "meshFormat": out_format,
@@ -413,6 +417,22 @@ def _render_eps_placeholder(src: Path, size: int = 512) -> Image.Image:
     return img
 
 
+def make_preview_from_image(img: Image.Image, max_size: int = 256) -> str:
+    """Preview directly from PIL Image (already background-removed)."""
+    try:
+        from io import BytesIO
+        cpy = img.convert("RGBA").copy()
+        cpy.thumbnail((max_size, max_size))
+        # Composite checker background so transparent is visible
+        bg = Image.new("RGBA", cpy.size, (16, 18, 28, 255))
+        # Simple checker for preview
+        bg.paste(cpy, (0, 0), cpy)
+        buf = BytesIO()
+        bg.save(buf, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
 def make_preview_data_url(src: Path, max_size: int = 256) -> str:
     try:
         if src.suffix.lower() in EPS_EXTS:
@@ -431,19 +451,60 @@ def make_preview_data_url(src: Path, max_size: int = 256) -> str:
         return ""
 
 
-def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, int]]:
-    # Try rembg for true silhouette (free, MIT) — fallback to alpha/luminance if not installed
-    rgba = img.convert("RGBA")
+def _simple_white_bg_removal(img: Image.Image) -> Image.Image:
+    """Lightweight background removal for white/light backgrounds (no ML)."""
     try:
-        from rembg import remove as _rembg_remove
-        # rembg expects RGBA PIL; returns RGBA with alpha matted
-        rgba = _rembg_remove(rgba)
-        if not isinstance(rgba, Image.Image):
-            rgba = Image.fromarray(rgba)
-        rgba = rgba.convert("RGBA")
-        print("[vision] rembg matting applied")
+        arr = np.asarray(img.convert("RGBA"), dtype=np.uint8)
+        r, g, b, a = arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3]
+        # Detect near-white (or near-light gray) as background — common for product photos
+        # Also handle pure white (255,255,255) and #f8f8f8 etc.
+        white_mask = (r > 240) & (g > 240) & (b > 240)
+        # If white is >15% of image, treat as background
+        if white_mask.mean() > 0.15:
+            # Set alpha 0 for white, keep original rgb but transparent
+            out = arr.copy()
+            out[white_mask, 3] = 0
+            # Slight feather: also fade near-white (230-240) to 50% alpha
+            near_white = (r > 230) & (g > 230) & (b > 230) & (~white_mask)
+            out[near_white, 3] = (out[near_white, 3].astype(np.float32) * 0.35).astype(np.uint8)
+            return Image.fromarray(out, mode="RGBA")
     except Exception:
         pass
+    return img
+
+def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, int]]:
+    # === Background removal: try rembg (u2net, small) if cached, else lightweight white removal ===
+    rgba = img.convert("RGBA")
+    rembg_applied = False
+    # Check if u2net model is cached to avoid blocking 1GB bria download
+    try:
+        u2net_path = Path.home() / ".rembg" / "models" / "u2net" / "u2net.onnx"
+        # Only use if fully downloaded (~176MB); partial file would fail
+        if u2net_path.is_file() and u2net_path.stat().st_size > 150_000_000:
+            from rembg import remove as _rembg_remove, new_session
+            import time as _t
+            sess = new_session("u2net")  # forces u2net, not bria
+            start = _t.time()
+            rgba_try = _rembg_remove(rgba, session=sess)
+            if isinstance(rgba_try, Image.Image):
+                rgba = rgba_try.convert("RGBA")
+            else:
+                rgba = Image.fromarray(rgba_try).convert("RGBA")
+            rembg_applied = True
+            print(f"[vision] rembg u2net matting applied in {(_t.time()-start):.2f}s")
+        else:
+            # No cached model yet — use fast white removal so user not blocked
+            before = rgba.copy()
+            rgba = _simple_white_bg_removal(rgba)
+            if rgba is not before:
+                print("[vision] simple white bg removal applied (u2net not cached)")
+    except Exception as e:
+        # Fallback to simple on any error (e.g. download timeout)
+        try:
+            rgba = _simple_white_bg_removal(rgba)
+            print(f"[vision] rembg failed ({e}); fallback white removal applied")
+        except Exception:
+            pass
 
     src_w, src_h = rgba.size
     work = rgba.resize((WORK_RES, WORK_RES), Image.LANCZOS)
