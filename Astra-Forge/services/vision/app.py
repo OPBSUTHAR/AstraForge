@@ -80,13 +80,16 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
 
     is_eps = src.suffix.lower() in EPS_EXTS
 
-    # Guard huge images before loading fully (skip probe for EPS - will rasterize)
+    # Auto-reframe huge images instead of failing (Blender/Tripo-like UX)
+    auto_reframed = False
     if not is_eps:
         try:
             with Image.open(src) as probe:
                 w, h = probe.size
                 if w * h > MAX_IMAGE_PIXELS:
-                    raise HTTPException(413, f"image too large {w}x{h} exceeds {MAX_IMAGE_PIXELS} pixels")
+                    # Will downscale in the load step; just log
+                    print(f"[vision] auto-reframe: {w}x{h} ({w*h} px) > {MAX_IMAGE_PIXELS} — downscaling to fit")
+                    auto_reframed = True
         except HTTPException:
             raise
         except Exception as exc:
@@ -100,8 +103,23 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
         if is_eps:
             raw_copy = await run_in_threadpool(_rasterize_eps, src)
         else:
-            with Image.open(src) as raw:
-                raw_copy = raw.copy()
+            # Load with auto-reframe: if exceeds MAX_IMAGE_PIXELS, thumbnail to safe size
+            def _load_with_reframe(p: Path) -> Image.Image:
+                with Image.open(p) as raw:
+                    raw.load()
+                    w, h = raw.size
+                    if w * h > MAX_IMAGE_PIXELS:
+                        # Compute target scale preserving aspect
+                        import math
+                        scale = math.sqrt(MAX_IMAGE_PIXELS / (w * h))
+                        new_w = max(1, int(w * scale))
+                        new_h = max(1, int(h * scale))
+                        # Use high-quality downscale
+                        resized = raw.resize((new_w, new_h), Image.LANCZOS)
+                        print(f"[vision] reframed {w}x{h} → {new_w}x{new_h}")
+                        return resized.copy()
+                    return raw.copy()
+            raw_copy = await run_in_threadpool(_load_with_reframe, src)
         mesh_path, stats = await run_in_threadpool(build_mesh, raw_copy, src.stem, out_format)
         elapsed = int((time.monotonic() - t0) * 1000)
         preview = await run_in_threadpool(make_preview_data_url, src)
@@ -350,10 +368,16 @@ def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, i
             r, g, b = (rgb[j, i] / 255.0).tolist()
             cols.append((r, g, b))
     base_y = -0.05
+    # Base color: not pure black (user feedback) — use dark underside matching scene, subtle
+    avg_r = float(np.mean(rgb[..., 0] / 255.0)) * 0.35
+    avg_g = float(np.mean(rgb[..., 1] / 255.0)) * 0.35
+    avg_b = float(np.mean(rgb[..., 2] / 255.0)) * 0.35
+    # Clamp to avoid pure black, give slight depth
+    base_r, base_g, base_b = max(0.06, avg_r), max(0.08, avg_g), max(0.14, avg_b)
     for j in range(WORK_RES):
         for i in range(WORK_RES):
             verts.append((xs[i], base_y, zs[j]))
-            cols.append((0.0, 0.0, 0.0))
+            cols.append((base_r, base_g, base_b))
     faces: list[tuple[int, int, int]] = []
 
     def idx_top(i: int, j: int) -> int:

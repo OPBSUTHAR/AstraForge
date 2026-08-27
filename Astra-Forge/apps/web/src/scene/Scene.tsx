@@ -67,25 +67,29 @@ export function Scene({ color, activeAsset, onTransform }: SceneProps) {
   }, []);
 
   return (
-    <Canvas camera={{ position: [6, 4.5, 8], fov: 45 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} shadows>
-      <color attach="background" args={["#04070f"]} />
-      <fog attach="fog" args={["#04070f", 14, 30]} />
+    <Canvas camera={{ position: [6, 4.5, 8], fov: 42 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} shadows>
+      <color attach="background" args={["#060a14"]} />
+      <fog attach="fog" args={["#060a14", 16, 36]} />
 
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[6, 10, 4]} intensity={1.2} color="#7fd7ff" castShadow />
-      <hemisphereLight args={["#212a48", "#04070f", 0.6]} />
+      <ambientLight intensity={0.62} />
+      <directionalLight position={[6, 10, 4]} intensity={1.35} color="#dff6ff" castShadow shadow-mapSize={[2048, 2048]} />
+      <hemisphereLight args={["#2a3a5a", "#060a14", 0.55]} />
+      {/* Subtle studio light rig like Blender/Tripo */}
+      <pointLight position={[-4, 6, -3]} intensity={0.5} color={color} />
+      <pointLight position={[4, 3, 6]} intensity={0.35} color="#ffffff" />
 
-      <Stars radius={40} depth={30} count={900} factor={2} fade speed={0.3} />
+      <Stars radius={40} depth={30} count={700} factor={1.4} fade speed={0.2} />
       <Grid
-        position={[0, -1.15, 0]}
+        position={[0, -1.12, 0]}
         args={[40, 40]}
         cellSize={0.5}
-        cellThickness={0.5}
-        cellColor="#0e3b4a"
+        cellThickness={0.4}
+        cellColor="rgba(20,60,80,0.35)"
         sectionSize={2.5}
-        sectionThickness={1}
+        sectionThickness={0.9}
         sectionColor={color}
-        fadeDistance={28}
+        fadeDistance={32}
+        fadeStrength={1.2}
         infiniteGrid
       />
 

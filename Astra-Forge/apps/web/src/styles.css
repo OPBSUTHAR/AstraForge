@@ -93,7 +93,21 @@ h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: 2.2px; color: var(--holog
 .file-upload { position: relative; overflow: hidden; border-style: dashed; }
 .file-upload.active { border-color: var(--hologram); background: rgba(0,229,255,0.14); }
 .file-upload input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.stage { grid-area: stage; position: relative; overflow: hidden; background: radial-gradient(120% 80% at 50% 10%, rgba(0,229,255,0.06), transparent 60%), linear-gradient(180deg, #050a16, #04070f); }
+/* New Blender/Tripo-inspired panels */
+.panel { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; backdrop-filter: blur(6px); }
+.panel + .panel { margin-top: 2px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.panel-head h3 { margin: 0; }
+.hint { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; opacity: 0.7; }
+.dropzone { display: block; position: relative; overflow: hidden; border: 1.5px dashed rgba(0,229,255,0.28); border-radius: 10px; background: rgba(0,229,255,0.06); padding: 18px 12px; text-align: center; cursor: pointer; transition: all .16s; }
+.dropzone:hover, .dropzone.active { border-color: var(--hologram); background: rgba(0,229,255,0.12); box-shadow: 0 6px 22px rgba(0,229,255,0.14); }
+.dropzone-inner { pointer-events: none; }
+.drop-icon { font-size: 18px; color: var(--hologram); }
+.dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.inspector .field { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; margin: 8px 0; font-family: var(--mono); font-size: 11px; }
+.inspector .field > span:first-child { color: var(--hologram-dim); font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; font-size: 10px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.stage { grid-area: stage; position: relative; overflow: hidden; background: radial-gradient(160% 90% at 50% 0%, rgba(0,229,255,0.08), transparent 60%), linear-gradient(180deg, #060a16, #04070f); }
 .stage canvas { outline: none; }
 .stage-overlay {
   position: absolute; left: 16px; bottom: 14px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.4px; color: var(--hologram-dim);
