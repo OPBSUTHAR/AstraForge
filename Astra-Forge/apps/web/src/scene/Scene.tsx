@@ -26,7 +26,7 @@ function EmptyState() {
   return (
     <Html position={[0, -0.9, 0]} center>
       <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "rgba(214,240,255,0.45)", background: "transparent", padding: 0, textAlign: "center", pointerEvents: "none", userSelect: "none" }}>
-        <div style={{ letterSpacing: 1.2, opacity: 0.6 }}>— drop image to generate · scroll to zoom —</div>
+        <div style={{ letterSpacing: 1.2, opacity: 0.6 }}>— drop image to generate · scroll free zoom · dbl-click to focus/pan —</div>
       </div>
     </Html>
   );
@@ -82,7 +82,7 @@ export function Scene({ color, activeAsset, onTransform, wireframe = false, view
   return (
     <Canvas camera={{ position: [6, 4.5, 8], fov: 42 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }} shadows>
       <color attach="background" args={["#060a14"]} />
-      <fog attach="fog" args={["#060a14", 16, 36]} />
+      <fog attach="fog" args={["#060a14", 48, 90]} />
 
       <ambientLight intensity={0.62} />
       <directionalLight position={[6, 10, 4]} intensity={1.35} color="#dff6ff" castShadow shadow-mapSize={[2048, 2048]} />
@@ -153,20 +153,24 @@ export function Scene({ color, activeAsset, onTransform, wireframe = false, view
         enabled={orbitEnabled}
         enableDamping
         dampingFactor={0.06}
-        autoRotate={false}
-        minDistance={0.05}
+        enableRotate={true}
+        enableZoom={true}
+        zoomSpeed={1.4}
+        enablePan={true}
+        panSpeed={1.2}
+        screenSpacePanning={false}
+        minDistance={0.01}
         maxDistance={Infinity}
         target={[0, 0, 0]}
-        enableZoom={true}
-        zoomSpeed={1.2}
-        enablePan={true}
-        panSpeed={1.0}
-        mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}
-        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
         minPolarAngle={0}
         maxPolarAngle={Math.PI}
+        minAzimuthAngle={-Infinity}
+        maxAzimuthAngle={Infinity}
+        mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}
+        touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
       />
       <ResetWatcher resetKey={viewResetKey} controlsRef={controlsRef} />
+      <DoubleClickPan controlsRef={controlsRef} meshUrl={meshUrl} />
     </Canvas>
   );
 }
@@ -180,5 +184,63 @@ function ResetWatcher({ resetKey, controlsRef }: { resetKey: number; controlsRef
     if (c?.target) c.target.set(0, 0, 0);
     c?.update?.();
   }, [resetKey, camera, controlsRef]);
+  return null;
+}
+
+function DoubleClickPan({ controlsRef, meshUrl }: { controlsRef: React.MutableRefObject<unknown>; meshUrl: string | null }) {
+  const { camera, scene, gl } = useThree();
+  const raycaster = useRef(new THREE.Raycaster());
+  const mouse = useRef(new THREE.Vector2());
+  useEffect(() => {
+    const el = gl.domElement;
+    const onDblClick = (e: MouseEvent) => {
+      // Double-click to focus/pan: raycast to mesh, or pan to center if missed
+      const rect = el.getBoundingClientRect();
+      mouse.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.current.setFromCamera(mouse.current, camera as THREE.Camera);
+      const intersects = raycaster.current.intersectObjects(scene.children, true);
+      // Find first mesh hit (ignore grid/transform gizmo)
+      const hit = intersects.find((h) => (h.object as THREE.Mesh).isMesh && !(h.object as unknown as { isTransformControls?: boolean }));
+      const controls = controlsRef.current as { target?: THREE.Vector3; update?: () => void } | null;
+      if (!controls?.target) return;
+      if (hit) {
+        // Smooth pan to hit point — free view from any angle
+        const target = controls.target;
+        const start = target.clone();
+        const end = hit.point.clone();
+        // Keep camera offset, just move target (pan)
+        let t = 0;
+        const animate = () => {
+          t += 0.08;
+          if (t >= 1) {
+            target.copy(end);
+            controls.update?.();
+            return;
+          }
+          target.lerpVectors(start, end, 1 - Math.pow(1 - t, 3));
+          controls.update?.();
+          requestAnimationFrame(animate);
+        };
+        animate();
+      } else {
+        // Double-click empty: re-center to origin (like Blender Numpad .)
+        const target = controls.target;
+        const start = target.clone();
+        const end = new THREE.Vector3(0, 0, 0);
+        let t = 0;
+        const animate = () => {
+          t += 0.08;
+          if (t >= 1) { target.copy(end); controls.update?.(); return; }
+          target.lerpVectors(start, end, 1 - Math.pow(1 - t, 3));
+          controls.update?.();
+          requestAnimationFrame(animate);
+        };
+        animate();
+      }
+    };
+    el.addEventListener("dblclick", onDblClick);
+    return () => el.removeEventListener("dblclick", onDblClick);
+  }, [camera, scene, gl, controlsRef, meshUrl]);
   return null;
 }
