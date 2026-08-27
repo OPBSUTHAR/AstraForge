@@ -154,11 +154,17 @@ export function Scene({ color, activeAsset, onTransform, wireframe = false, view
         enableDamping
         dampingFactor={0.06}
         autoRotate={false}
-        minDistance={2.5}
-        maxDistance={24}
+        minDistance={0.05}
+        maxDistance={Infinity}
         target={[0, 0, 0]}
+        enableZoom={true}
+        zoomSpeed={1.2}
+        enablePan={true}
+        panSpeed={1.0}
         mouseButtons={{ LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN }}
         touches={{ ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN }}
+        minPolarAngle={0}
+        maxPolarAngle={Math.PI}
       />
       <ResetWatcher resetKey={viewResetKey} controlsRef={controlsRef} />
     </Canvas>
