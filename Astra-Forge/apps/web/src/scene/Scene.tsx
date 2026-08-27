@@ -36,10 +36,18 @@ type Mode = "translate" | "rotate" | "scale";
 
 export function Scene({ color, activeAsset, onTransform, wireframe = false, viewResetKey = 0 }: SceneProps) {
   const hasMesh = activeAsset?.meshUrl || (activeAsset?.path && activeAsset.status === "ready");
-  const meshUrl = activeAsset?.meshUrl ?? (hasMesh ? `/meshes/${activeAsset?.path}` : null);
+  let meshUrl: string | null = null;
+  if (activeAsset?.meshUrl) {
+    const u = activeAsset.meshUrl;
+    meshUrl = u.startsWith("/") ? u : `/meshes/${u.replace(/^\/+/, "")}`;
+    if (!meshUrl.startsWith("/meshes/") && !meshUrl.startsWith("/api/")) meshUrl = `/meshes/${u.split("/").pop()}`;
+  } else if (hasMesh && activeAsset?.path) {
+    meshUrl = `/meshes/${activeAsset.path.split("/").pop()}`;
+  }
   const [mode, setMode] = useState<Mode>("translate");
   const [orbitEnabled, setOrbitEnabled] = useState(true);
   const groupRef = useRef<THREE.Group>(null);
+  const [gizmoObject, setGizmoObject] = useState<THREE.Object3D | null>(null);
   const controlsRef = useRef<unknown>(null);
 
   // Sync persisted transform from server to outer group
@@ -50,6 +58,11 @@ export function Scene({ color, activeAsset, onTransform, wireframe = false, view
     if (rotation) groupRef.current.rotation.set(...rotation);
     if (scale) groupRef.current.scale.set(...scale);
   }, [activeAsset?.transform]);
+
+  // Keep gizmo object in sync when mesh changes
+  useEffect(() => {
+    if (groupRef.current) setGizmoObject(groupRef.current);
+  }, [meshUrl]);
 
   // Keyboard: T/R/S/Esc
   useEffect(() => {
@@ -95,28 +108,30 @@ export function Scene({ color, activeAsset, onTransform, wireframe = false, view
 
       {meshUrl ? (
         <Suspense fallback={<LoaderFallback />}>
-          <group ref={groupRef}>
+          <group ref={(el) => { (groupRef as React.MutableRefObject<THREE.Group | null>).current = el; if (el) setGizmoObject(el); }}>
             <MeshAsset url={meshUrl} color={color} wireframe={wireframe} />
           </group>
-          <TransformControls
-            object={groupRef as unknown as THREE.Object3D}
-            mode={mode}
-            enabled={!!meshUrl}
-            onMouseDown={() => setOrbitEnabled(false)}
-            onMouseUp={() => {
-              setOrbitEnabled(true);
-              if (onTransform && groupRef.current) {
-                const p = groupRef.current.position;
-                const r = groupRef.current.rotation;
-                const s = groupRef.current.scale;
-                onTransform({
-                  position: [Number(p.x.toFixed(3)), Number(p.y.toFixed(3)), Number(p.z.toFixed(3))],
-                  rotation: [Number(r.x.toFixed(3)), Number(r.y.toFixed(3)), Number(r.z.toFixed(3))],
-                  scale: [Number(s.x.toFixed(3)), Number(s.y.toFixed(3)), Number(s.z.toFixed(3))],
-                });
-              }
-            }}
-          />
+          {gizmoObject && (
+            <TransformControls
+              object={gizmoObject}
+              mode={mode}
+              enabled={!!meshUrl}
+              onMouseDown={() => setOrbitEnabled(false)}
+              onMouseUp={() => {
+                setOrbitEnabled(true);
+                if (onTransform && groupRef.current) {
+                  const p = groupRef.current.position;
+                  const r = groupRef.current.rotation;
+                  const s = groupRef.current.scale;
+                  onTransform({
+                    position: [Number(p.x.toFixed(3)), Number(p.y.toFixed(3)), Number(p.z.toFixed(3))],
+                    rotation: [Number(r.x.toFixed(3)), Number(r.y.toFixed(3)), Number(r.z.toFixed(3))],
+                    scale: [Number(s.x.toFixed(3)), Number(s.y.toFixed(3)), Number(s.z.toFixed(3))],
+                  });
+                }
+              }}
+            />
+          )}
         </Suspense>
       ) : (
         <EmptyState />

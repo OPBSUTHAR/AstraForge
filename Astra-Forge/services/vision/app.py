@@ -31,6 +31,66 @@ from PIL import Image
 _GS_CANDIDATES = ["gswin64c", "gswin32c", "gs"]
 EPS_EXTS = {".eps", ".ps", ".ai"}
 
+def _analyze_file(src: Path, is_eps: bool) -> dict:
+    """Industry-grade file analysis before 3D conversion."""
+    try:
+        stat = src.stat()
+        size_kb = stat.st_size / 1024
+        ext = src.suffix.lower()
+        info: dict[str, Any] = {"name": src.name, "ext": ext, "size_kb": round(size_kb, 1)}
+        if is_eps:
+            text = src.read_text(encoding="utf-8", errors="ignore")[:8000]
+            import re
+            m = re.search(r"%%BoundingBox:\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)", text)
+            if m:
+                x0, y0, x1, y1 = map(int, m.groups())
+                info["bbox"] = [x0, y0, x1, y1]
+                info["vector_size"] = f"{x1-x0}x{y1-y0} pt"
+            info["ai"] = "AI" in text[:3000] or "Adobe Illustrator" in text
+            info["has_thumbnail"] = "AI7_Thumbnail" in text or "BeginData" in text
+            info["binary_header"] = src.read_bytes()[:4] == b"\xc5\xd0\xd3\xc6"
+            info["ghostscript"] = _find_gs() is not None
+            # Recommend mode
+            if info.get("ghostscript"):
+                info["mode"] = "vector-extrude (Ghostscript raster → heightfield)"
+            else:
+                info["mode"] = "placeholder (install Ghostscript for true vector)"
+            info["note"] = "EPS analyzed as vector; procedural heightfield will extrude luminance"
+        else:
+            with Image.open(src) as im:
+                w, h = im.size
+                info["dimensions"] = f"{w}x{h}"
+                info["pixels"] = w*h
+                info["mode"] = im.mode
+                info["format"] = im.format
+                # Heuristic: photo vs logo vs graphic
+                # If image has alpha or large flat color areas → logo/graphic
+                # Simple check: variance of histogram
+                try:
+                    hist = im.convert("L").histogram()
+                    # Rough transparent check
+                    has_alpha = "A" in im.getbands()
+                    info["has_alpha"] = has_alpha
+                    # If many pure white/black pixels → graphic
+                    white = hist[255] if len(hist) > 255 else 0
+                    black = hist[0] if len(hist) > 0 else 0
+                    total = w*h
+                    graphic_ratio = (white + black) / total if total else 0
+                    if has_alpha or graphic_ratio > 0.35:
+                        info["type"] = "graphic/logo (sharp edges)"
+                        info["height_strategy"] = "alpha silhouette + luminance"
+                    elif w*h > 2000*2000:
+                        info["type"] = "high-res photo"
+                        info["height_strategy"] = "auto-reframe + smoothed luminance"
+                    else:
+                        info["type"] = "photo/illustration"
+                        info["height_strategy"] = "smoothed luminance"
+                except Exception:
+                    info["type"] = "unknown"
+        return info
+    except Exception as e:
+        return {"error": str(e), "name": src.name}
+
 # Resolve directories: env > server storage > local output
 DEFAULT_UPLOAD = Path(__file__).resolve().parent.parent.parent / "apps" / "server" / "storage" / "uploads"
 DEFAULT_MESH = Path(__file__).resolve().parent.parent.parent / "apps" / "server" / "storage" / "meshes"
@@ -100,6 +160,10 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
         out_format = "obj"
 
     try:
+        # === 7-star: analyze file before conversion (industry pipeline) ===
+        analysis = await run_in_threadpool(_analyze_file, src, is_eps)
+        print(f"[vision] analysis: {analysis}")
+
         if is_eps:
             raw_copy = await run_in_threadpool(_rasterize_eps, src)
         else:
@@ -120,6 +184,8 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
                         return resized.copy()
                     return raw.copy()
             raw_copy = await run_in_threadpool(_load_with_reframe, src)
+        # Attach analysis dims to raw_copy for mesh builder logging
+        raw_copy.info["analysis"] = analysis  # type: ignore
         mesh_path, stats = await run_in_threadpool(build_mesh, raw_copy, src.stem, out_format)
         elapsed = int((time.monotonic() - t0) * 1000)
         preview = await run_in_threadpool(make_preview_data_url, src)
@@ -129,6 +195,7 @@ async def generate(req: GenerateRequest) -> dict[str, Any]:
             "stats": stats,
             "elapsedMs": elapsed,
             "previewDataUrl": preview,
+            "analysis": analysis,
         }
     except HTTPException:
         raise
@@ -292,17 +359,49 @@ def _render_eps_placeholder(src: Path, size: int = 512) -> Image.Image:
                 drawn += 1
 
     if drawn == 0:
-        # Generic placeholder: checker + label
-        for y in range(0, size, 32):
-            for x in range(0, size, 32):
-                if (x // 32 + y // 32) % 2 == 0:
-                    draw.rectangle([x, y, x + 32, y + 32], fill=(30, 30, 36, 255))
-        # EPS label
+        # Generic placeholder: brighter high-contrast checker for visibility in editor
+        # Attempt to extract AI thumbnail if present (more faithful than checker)
+        thumb_extracted = False
         try:
-            draw.text((size // 2, size // 2 - 10), "EPS", fill=(0, 229, 255, 255), anchor="mm", font=ImageFont.load_default())
-            draw.text((size // 2, size // 2 + 14), src.name[:28], fill=(180, 180, 180, 255), anchor="mm", font=ImageFont.load_default())
+            import re as _re
+            # AI7_Thumbnail hex block is 104x128x3? Try to parse
+            m_thumb = _re.search(r"%AI7_Thumbnail:\s*(\d+)\s+(\d+)\s+(\d+)", text)
+            if m_thumb:
+                tw, th, depth = map(int, m_thumb.groups())
+                # Find hex data after %%BeginData
+                m_data = _re.search(r"%%BeginData:\s*\d+\s*Hex Bytes\s*\r?\n((?:%[0-9A-Fa-f]+\r?\n)+)", text)
+                if m_data:
+                    hex_block = _re.sub(r"[^0-9A-Fa-f]", "", m_data.group(1))
+                    if len(hex_block) >= tw*th*2:
+                        # Take first tw*th bytes as grayscale thumb
+                        import io as _io
+                        raw = bytes.fromhex(hex_block[:tw*th*2])
+                        thumb = Image.frombytes("L", (tw, th), raw[:tw*th])
+                        thumb = thumb.convert("RGBA").resize((size, size), Image.NEAREST)
+                        # Paste thumb centered with contrast boost
+                        img.paste(thumb, (0, 0))
+                        thumb_extracted = True
+        except Exception:
+            pass
+        if not thumb_extracted:
+            # High-contrast checker so heightfield is visible (not dark)
+            for y in range(0, size, 32):
+                for x in range(0, size, 32):
+                    if (x // 32 + y // 32) % 2 == 0:
+                        draw.rectangle([x, y, x + 32, y + 32], fill=(90, 110, 140, 255))
+                    else:
+                        draw.rectangle([x, y, x + 32, y + 32], fill=(18, 22, 34, 255))
+            # Add diagonal accent for depth cue
+            draw.rectangle([size//4, size//4, 3*size//4, 3*size//4], fill=(0, 229, 255, 38), outline=(0, 229, 255, 90))
+        # EPS label — always visible for verification
+        try:
+            # Background for text
+            draw.rectangle([size//2 - 80, size//2 - 22, size//2 + 80, size//2 + 22], fill=(4, 7, 15, 210), outline=(0, 229, 255, 100))
+            draw.text((size // 2, size // 2 - 6), "EPS", fill=(0, 229, 255, 255), anchor="mm", font=ImageFont.load_default())
+            draw.text((size // 2, size // 2 + 10), src.name[:28], fill=(214, 240, 255, 255), anchor="mm", font=ImageFont.load_default())
             if not _find_gs():
-                draw.text((size // 2, size - 18), "install Ghostscript for full fidelity", fill=(120, 120, 130, 255), anchor="mm", font=ImageFont.load_default())
+                draw.rectangle([0, size - 20, size, size], fill=(0, 0, 0, 160))
+                draw.text((size // 2, size - 10), "install Ghostscript for true vector extrude", fill=(255, 184, 107, 255), anchor="mm", font=ImageFont.load_default())
         except Exception:
             pass
     else:
@@ -371,14 +470,19 @@ def build_mesh(img: Image.Image, stem: str, fmt: str) -> tuple[Path, dict[str, i
         fg_mask = _largest_blob(fg_mask)
     if fg_mask.sum() == 0:
         fg_mask = np.ones_like(luminance, dtype=bool)
-    # Height = luminance modulated by alpha + small ambient occlusion from edges
+    # Height = luminance modulated by alpha — then contrast-stretched like Blender displacement
     height = luminance * np.clip(alpha * 1.1, 0.0, 1.0)
     fg_lum = luminance[fg_mask]
     floor = float(fg_lum.min()) if fg_lum.size else 0.0
-    # Normalize to make model more image-faithful: stretch contrast
     height = np.clip(height - floor + 0.03, 0.0, 1.0)
-    # Gentle gamma for depth perception (like Blender displacement)
-    height = np.power(height, 0.92) * MAX_HEIGHT
+    # Amplify low-contrast images (e.g. dark EPS placeholder) so model is visible not flat
+    h_max = float(height.max()) if height.size else 0.0
+    h_min = float(height.min()) if height.size else 0.0
+    if h_max - h_min < 0.18 and h_max > 0.01:
+        boost = 0.18 / max(h_max - h_min, 0.02)
+        height = np.clip((height - h_min) * boost + 0.02, 0.0, 1.0)
+        print(f"[vision] boosted low-contrast {h_min:.3f}-{h_max:.3f} by {boost:.2f}x")
+    height = np.power(height, 0.88) * MAX_HEIGHT  # slightly stronger gamma for silhouette faithfulness
     aspect = src_w / src_h if src_h else 1.0
     half_x = 1.0
     half_z = 1.0 / aspect if aspect >= 1 else 1.0 * aspect

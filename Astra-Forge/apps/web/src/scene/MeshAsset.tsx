@@ -26,20 +26,34 @@ export function MeshAsset({ url, color = "#00e5ff", transform, wireframe = false
     group.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const m = child as THREE.Mesh;
-        if (m.geometry.getAttribute("color")) {
-          // keep vertex colors
+        const hasVertCol = !!m.geometry.getAttribute("color");
+        if (!hasVertCol) {
+          const mat = m.material as THREE.MeshStandardMaterial;
+          if (mat.color) mat.color.copy(col);
+          if (mat.roughness !== undefined) { mat.roughness = 0.42; mat.metalness = 0.06; }
         } else {
-          const mat = m.material as THREE.Material;
-          if ((mat as THREE.MeshStandardMaterial).color) {
-            (mat as THREE.MeshStandardMaterial).color.copy(col);
-          }
-          // Enhance material for industrial look
-          if ((mat as THREE.MeshStandardMaterial).roughness !== undefined) {
-            (mat as THREE.MeshStandardMaterial).roughness = 0.42;
-            (mat as THREE.MeshStandardMaterial).metalness = 0.06;
+          // For vertex-colored meshes (heightfield), keep colors but boost emissive so dark EPS is visible
+          const mat = m.material as THREE.MeshStandardMaterial;
+          // Ensure vertexColors enabled
+          mat.vertexColors = true;
+          mat.roughness = 0.55;
+          mat.metalness = 0.02;
+          mat.emissive.copy(col).multiplyScalar(0.18);
+          mat.emissiveIntensity = 0.45;
+          // Brighten dark vertex colors slightly
+          const colAttr = m.geometry.getAttribute("color") as THREE.BufferAttribute;
+          if (colAttr) {
+            const arr = colAttr.array as Float32Array;
+            let avg = 0; for (let i = 0; i < arr.length; i++) avg += arr[i];
+            avg /= arr.length || 1;
+            if (avg < 0.25) {
+              for (let i = 0; i < arr.length; i++) arr[i] = Math.min(1, arr[i] * 1.7 + 0.12);
+              colAttr.needsUpdate = true;
+            }
           }
         }
         (m.material as THREE.MeshStandardMaterial).wireframe = wireframe;
+        (m.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
         m.castShadow = true;
         m.receiveShadow = true;
       }

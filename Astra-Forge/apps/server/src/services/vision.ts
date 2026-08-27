@@ -11,6 +11,7 @@ interface VisionServiceResponse {
   stats: { vertices: number; triangles: number };
   previewDataUrl?: string;
   elapsedMs?: number;
+  analysis?: Record<string, unknown>;
 }
 
 // Prevent concurrent vision jobs for same asset
@@ -69,6 +70,8 @@ export async function runVisionJob(assetId: string): Promise<PipelineJob> {
         throw new Error(`vision service http ${response.status}: ${errText || response.statusText}`);
       }
       const result = (await response.json()) as VisionServiceResponse;
+      // 7-star: log analysis for verification
+      if (result.analysis) console.log(`[vision] analysis for ${asset.name}:`, JSON.stringify(result.analysis).slice(0, 400));
 
       const meshAbsolute = path.isAbsolute(result.meshPath) ? result.meshPath : path.join(config.meshDir, path.basename(result.meshPath));
 
@@ -104,12 +107,17 @@ export async function runVisionJob(assetId: string): Promise<PipelineJob> {
       });
 
       await update(job.id, { progress: 95 });
+      // Verify mesh is readable and has content before marking done
+      const meshStat = await fs.stat(meshAbsolute).catch(() => null);
+      if (!meshStat || meshStat.size < 100) throw new Error(`generated mesh empty or unreadable: ${meshFilename}`);
       await update(job.id, {
         status: "done",
         progress: 100,
-        output: { assetId: meshAsset.id, meshPath: meshFilename, meshUrl: meshAsset.meshUrl },
+        output: { assetId: meshAsset.id, meshPath: meshFilename, meshUrl: meshAsset.meshUrl, analysis: result.analysis, previewDataUrl: result.previewDataUrl },
       });
       emitAssetUpdate(meshAsset as unknown as Record<string, unknown>);
+      // Also emit log for verification
+      console.log(`[vision] verified ${meshFilename} ${meshStat.size} bytes → ${asset.name} analysis ${JSON.stringify(result.analysis)?.slice(0,200)}`);
     } catch (error) {
       const message = (error as Error).message || String(error);
       await update(job.id, { status: "failed", error: message });

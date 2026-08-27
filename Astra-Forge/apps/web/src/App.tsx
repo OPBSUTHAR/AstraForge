@@ -141,6 +141,18 @@ export function App() {
   const activeAsset = useMemo(() => assets.find((a) => a.id === activeAssetId) ?? null, [assets, activeAssetId]);
   useEffect(() => { if (activeAsset) setEditingName(activeAsset.name); }, [activeAsset?.id, activeAsset?.name]);
 
+  // Verify mesh is actually loadable when job completes — ensures editor shows real model not just xyz gizmo
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === "done" && (job.output as { meshUrl?: string; analysis?: Record<string,unknown> })?.meshUrl) {
+      const out = job.output as { meshUrl: string; analysis?: Record<string,unknown> };
+      pushTerm("info", `✓ verified ${out.meshUrl} — analysis: ${JSON.stringify(out.analysis ?? {}).slice(0, 220)}`);
+      // Force refresh assets to ensure new mesh appears and is selected
+      void refreshAssets();
+    }
+    if (job.status === "failed" && job.error) pushTerm("error", `vision failed: ${job.error} — try Regenerate or check file`);
+  }, [job?.status, job?.output, refreshAssets, pushTerm]);
+
   useEffect(() => {
     if (sceneCommands.length === 0) return;
     const cmd = sceneCommands[sceneCommands.length - 1] as { action: string; text?: string; payload?: Record<string, unknown> };
