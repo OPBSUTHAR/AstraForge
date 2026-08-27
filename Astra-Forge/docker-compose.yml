@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: astraforge-mongo
+    ports: ["27017:27017"]
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vision:
+    build:
+      context: ./services/vision
+      dockerfile: Dockerfile
+    container_name: astraforge-vision
+    environment:
+      UPLOAD_DIR: /data/uploads
+      MESH_DIR: /data/meshes
+      VISION_WORK_RES: 96
+    volumes:
+      - ./apps/server/storage/uploads:/data/uploads
+      - ./apps/server/storage/meshes:/data/meshes
+    ports: ["5001:5001"]
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    container_name: astraforge-server
+    depends_on:
+      mongo:
+        condition: service_healthy
+      vision:
+        condition: service_started
+    environment:
+      PORT: 4000
+      MONGODB_URI: mongodb://mongo:27017/astraforge
+      UPLOAD_DIR: /app/storage/uploads
+      MESH_DIR: /app/storage/meshes
+      VISION_SERVICE_URL: http://vision:5001
+      CORS_ORIGIN: "*"
+    volumes:
+      - ./apps/server/storage:/app/storage
+    ports: ["4000:4000"]
+
+volumes:
+  mongo-data:

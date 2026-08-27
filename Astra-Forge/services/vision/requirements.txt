@@ -1,7 +1,9 @@
 fastapi==0.115.6
-uvicorn[standard]>=0.34.0
-pillow>=11.0.0
-numpy>=2.1.0
+uvicorn==0.34.0
+pillow==11.1.0
+numpy==2.1.3
+python-multipart==0.0.9
+pydantic==2.11.5
 # AstraForge vision is intentionally fully offline:
 # only Pillow + numpy are required to convert a 2D image into a mesh.
 # Optional backends (installed separately, very heavy):

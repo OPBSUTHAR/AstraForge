@@ -1,23 +1,27 @@
 {
   "name": "astra-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Project AstraForge - Tony Stark style holographic design space bridging 2D images, AI generation, and physical fabrication",
+  "description": "Project AstraForge — Tony Stark-style holographic design space bridging 2D images, AI generation, and physical fabrication",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @astraforge/server\" \"npm run dev -w @astraforge/web\"",
+    "dev": "concurrently -n server,web -c cyan,magenta --kill-others-on-fail \"npm run dev -w @astraforge/server\" \"npm run dev -w @astraforge/web\"",
     "dev:server": "npm run dev -w @astraforge/server",
     "dev:web": "npm run dev -w @astraforge/web",
     "build": "npm run build -w @astraforge/shared && npm run build -w @astraforge/server && npm run build -w @astraforge/web",
     "typecheck": "npm run typecheck -w @astraforge/shared && npm run typecheck -w @astraforge/server && npm run typecheck -w @astraforge/web",
-    "vision:setup": "cd services/vision && python -m venv .venv && .venv/Scripts/pip install -r requirements.txt",
-    "karmashala": "cd services/karmashala && python cli.py"
+    "lint": "echo \"no lint configured yet — run typecheck\" && npm run typecheck",
+    "clean": "rimraf apps/server/dist apps/web/dist packages/shared/dist",
+    "vision:setup": "python -m venv services/vision/.venv && services/vision/.venv/Scripts/python -m pip install -r services/vision/requirements.txt || python3 -m venv services/vision/.venv && services/vision/.venv/bin/pip install -r services/vision/requirements.txt",
+    "vision:dev": "uvicorn app:app --app-dir services/vision --host 0.0.0.0 --port 5001 --reload",
+    "karmashala": "python services/karmashala/cli.py"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "rimraf": "^6.0.1"
   },
   "engines": {
     "node": ">=20"

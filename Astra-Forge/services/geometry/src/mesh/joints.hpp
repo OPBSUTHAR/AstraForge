@@ -2,9 +2,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <vector>
 
 #include "mesh_types.hpp"
+
+#ifndef M_PI
+#define M_PI std::numbers::pi
+#endif
 
 namespace af {
 

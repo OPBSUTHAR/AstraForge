@@ -34,13 +34,33 @@ struct Mesh {
 
   std::size_t vertex_count() const { return vertices.size(); }
   std::size_t face_count() const { return faces.size(); }
+  bool empty() const { return faces.empty(); }
+  void clear() {
+    vertices.clear();
+    faces.clear();
+  }
 
   Vec3 face_normal(std::size_t f) const {
     const auto& idx = faces[f];
-    return normalize(cross(vertices[idx[1]] - vertices[idx[0]], vertices[idx[2]] - vertices[idx[0]]));
+    Vec3 e1 = vertices[idx[1]] - vertices[idx[0]];
+    Vec3 e2 = vertices[idx[2]] - vertices[idx[0]];
+    Vec3 n = cross(e1, e2);
+    double len = norm(n);
+    if (len <= 1e-12) return {0, 0, 0};
+    return n * (1.0 / len);
   }
 
-  bool empty() const { return faces.empty(); }
+  std::pair<Vec3, Vec3> bounds() const {
+    if (vertices.empty()) return {{0, 0, 0}, {0, 0, 0}};
+    Vec3 mn = vertices[0], mx = vertices[0];
+    for (auto& v : vertices) {
+      for (int i = 0; i < 3; ++i) {
+        mn[i] = std::min(mn[i], v[i]);
+        mx[i] = std::max(mx[i], v[i]);
+      }
+    }
+    return {mn, mx};
+  }
 };
 
 struct MeshStats {
@@ -53,9 +73,9 @@ struct MeshStats {
 };
 
 struct HalfEdge {
-  std::uint32_t vertex;       // start vertex
-  std::uint32_t face;         // owning face
-  std::uint32_t next;         // next half-edge in face (index into half_edges)
+  std::uint32_t vertex;
+  std::uint32_t face;
+  std::uint32_t next;
   std::uint32_t twin = UINT32_MAX;
 };
 

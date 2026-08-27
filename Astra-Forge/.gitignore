@@ -39,6 +39,12 @@ apps/server/storage/
 # Logs
 *.log
 npm-debug.log*
+services/vision/output/
+services/vision/.venv/
+*.stl
+*.obj
+!services/geometry/**/*.obj
+!services/geometry/**/*.stl
 
 # IDE / OS
 .vscode/

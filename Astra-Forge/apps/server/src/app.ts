@@ -1,20 +1,50 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
-import path from "node:path";
-import { config } from "./config.js";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { config, corsOptions } from "./config.js";
 import { projectsRouter } from "./routes/projects.js";
 import { assetsRouter } from "./routes/assets.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { karmashalaRouter } from "./routes/karmashala.js";
 
+class HttpError extends Error {
+  constructor(public status: number, message: string, public code?: string) {
+    super(message);
+  }
+}
+
 export function createApp(): express.Express {
   const app = express();
 
-  app.use(cors());
-  app.use(express.json({ limit: "10mb" }));
+  // Security headers
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(cors(corsOptions()));
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ ok: true, service: "astraforge-server", uptime: process.uptime() });
+  // Rate limit: 100 req / 15min per IP (API only)
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.path === "/api/health" || req.path.startsWith("/meshes"),
+  });
+  app.use(limiter);
+
+  app.use(express.json({ limit: "2mb" }));
+
+  // Health with DB status
+  app.get("/api/health", async (_req, res) => {
+    const { isMemoryMode } = await import("./db.js");
+    res.json({
+      ok: true,
+      service: "astraforge-server",
+      version: "0.2.0",
+      env: config.nodeEnv,
+      uptime: process.uptime(),
+      storage: isMemoryMode() ? "memory" : "mongodb",
+      time: new Date().toISOString(),
+    });
   });
 
   app.use("/api/projects", projectsRouter);
@@ -22,13 +52,43 @@ export function createApp(): express.Express {
   app.use("/api/jobs", jobsRouter);
   app.use("/api/karmashala", karmashalaRouter);
 
-  // Serve generated meshes to the web client (GLB/OBJ for the 3D viewer).
-  app.use("/meshes", express.static(config.meshDir));
+  // Serve meshes with immutable cache
+  app.use(
+    "/meshes",
+    express.static(config.meshDir, {
+      maxAge: "1d",
+      fallthrough: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith(".obj") || filePath.endsWith(".stl")) {
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        }
+      },
+    }),
+  );
 
+  // 404
+  app.use((req, res) => {
+    res.status(404).json({ error: `Not found: ${req.method} ${req.path}`, code: "NOT_FOUND" });
+  });
+
+  // Central error handler
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error("[server] error:", error);
-    res.status(500).json({ error: (error as Error).message });
+    if (error instanceof HttpError) {
+      res.status(error.status).json({ error: error.message, code: error.code });
+      return;
+    }
+    if (error && typeof error === "object" && "status" in error) {
+      const status = Number((error as unknown as { status: number }).status) || 500;
+      res.status(status).json({ error: (error as unknown as Error).message });
+      return;
+    }
+    console.error("[server] unhandled error:", error);
+    const msg = config.isProduction ? "Internal server error" : (error as Error).message;
+    res.status(500).json({ error: msg, code: "INTERNAL" });
   });
 
   return app;
 }
+
+export { HttpError };
