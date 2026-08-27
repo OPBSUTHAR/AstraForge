@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, Stars, Html } from "@react-three/drei";
-import { HologramCore } from "./HologramCore";
 import { MeshAsset } from "./MeshAsset";
 import type { ModelAsset } from "@astraforge/shared";
 
@@ -15,6 +14,18 @@ function LoaderFallback() {
   return (
     <Html center>
       <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--hologram-dim)", background: "rgba(4,7,15,0.6)", padding: "4px 8px", borderRadius: 4 }}>loading…</div>
+    </Html>
+  );
+}
+
+function EmptyState() {
+  return (
+    <Html center>
+      <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)", background: "rgba(4,7,15,0.72)", padding: "12px 16px", borderRadius: 8, border: "1px solid rgba(0,229,255,0.18)", textAlign: "center", maxWidth: 280 }}>
+        <div style={{ color: "var(--hologram)", fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>NO MODEL LOADED</div>
+        <div>Import a JPG, PNG or EPS image</div>
+        <div style={{ opacity: 0.7, marginTop: 4 }}>then click Generate 3D mesh</div>
+      </div>
     </Html>
   );
 }
@@ -51,7 +62,7 @@ export function Scene({ exploded, color, activeAsset }: SceneProps) {
           <MeshAsset url={meshUrl} color={color} transform={activeAsset?.transform} />
         </Suspense>
       ) : (
-        <HologramCore color={color} exploded={exploded} />
+        <EmptyState />
       )}
 
       <OrbitControls
